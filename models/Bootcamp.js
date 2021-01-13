@@ -38,16 +38,14 @@ const BootcampSchema = new mongoose.Schema({
     },
     location: {
         //GeoJSON Point 
-        type: [{
+        type: {
             type: "String",
-            required: true,
             enum: ['Point'],
-            default: 'Point'
-        }],
-        required: true,
+           
+        },
         coordinates: {
             type: [Number],
-            required: true
+            index: '2dsphere',
         },
         formattedAddress: String,
         street: String,
@@ -97,8 +95,16 @@ const BootcampSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
+    }, 
+     user: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User',
+        required: true
     }
 
+}, { 
+    toJSON: { virtuals: true},
+    toObject: { virtuals: true}
 });
 
 //Create Bootcamp Slug 
@@ -111,7 +117,7 @@ BootcampSchema.pre('save', function(next){
 BootcampSchema.pre('save', async function(next) {
     //console.log(geocoder.geocode(this.address));
    const loc = await geocoder.geocode(this.address);
-    let result = this.location = {
+    this.location = {
        type: 'Point', 
        coordinates: [loc[0].longitude, loc[0].latitude], 
        formattedAddress: loc[0].formattedAddress, 
@@ -121,11 +127,26 @@ BootcampSchema.pre('save', async function(next) {
        zipcode: loc[0].zipcode, 
        country: loc[0].countryCode
    }
-   console.log(result);
+  
    //Do not save address in DB 
    this.address= undefined; 
    
     next();
 });
+
+//Cascade delete courses when a bootcamp is deleted 
+BootcampSchema.pre('remove', async function (next){
+    console.log(`Courses being removed from bootcamp ${this._id}`);
+    await this.model('Course').deleteMany({ bootcamp: this._id });
+    next();
+});
+
+//Reverse populate with virtuals 
+BootcampSchema.virtual('courses', {
+    ref: 'Course',
+    localField: '_id',
+    foreignField: 'bootcamp', 
+    justOne: false
+})
 
 module.exports = mongoose.model('Bootcamp', BootcampSchema);
